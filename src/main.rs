@@ -19,6 +19,7 @@ fn lookup_link_addr(iface: &str) -> Result<LinkAddr, Box<dyn std::error::Error>>
 }
 
 fn main() {
+    env_logger::init();
     if std::env::args().len() != 3 {
         eprintln!(
             "Usage: {} <iface> <ip>",
@@ -40,7 +41,7 @@ fn main() {
     let ifaddr = lookup_link_addr(&iface).expect("failed to lookup link address");
     let ifindex = ifaddr.ifindex();
     let mac = ifaddr.addr();
-    println!(
+    log::info!(
         "Claiming IP {} on {}[{}] for {:x?}",
         ip, iface, ifindex, mac
     );
@@ -64,7 +65,7 @@ fn main() {
         let (size, from) = match recvfrom(socket, &mut rbuf) {
             Ok(r) => r,
             Err(err) => {
-                eprintln!("failed to receive packet: {}", err);
+                log::error!("failed to receive packet: {}", err);
                 std::process::exit(1);
             }
         };
@@ -73,17 +74,17 @@ fn main() {
         let from = match from {
             Some(SockAddr::Link(from)) => from,
             _ => {
-                eprintln!("received packet without link address sender: {:?}", from);
+                log::error!("received packet without link address sender: {:?}", from);
                 continue;
             }
         };
-        eprintln!("received packet from {:?}: {:x?}", from, pkt);
+        log::trace!("received packet from {:?}: {:x?}", from, pkt);
 
         match arp::Arp::try_from(pkt) {
             Ok(arp::Arp::Request(req)) => {
-                eprintln!("received arp request: {:x?}", req);
+                log::trace!("received arp request: {:x?}", req);
                 if from.addr() != req.sha {
-                    eprintln!(
+                    log::warn!(
                         "received arp with sender mac {:x?} from mac {:x?}",
                         from.addr(),
                         req.sha
@@ -91,7 +92,7 @@ fn main() {
                 }
 
                 if req.tpa == ip {
-                    eprintln!("sending arp reply");
+                    log::trace!("sending arp reply");
                     if let Err(err) = sendto(
                         socket,
                         req.reply(mac)
@@ -100,13 +101,13 @@ fn main() {
                         &SockAddr::Link(from),
                         MsgFlags::MSG_DONTWAIT,
                     ) {
-                        eprintln!("failed to send arp reply: {}", err);
+                        log::error!("failed to send arp reply: {}", err);
                     }
                 }
             }
             Ok(_) => {}
             Err(_) => {
-                eprintln!("failed to decode arp packet");
+                log::warn!("failed to decode arp packet");
             }
         }
     }
