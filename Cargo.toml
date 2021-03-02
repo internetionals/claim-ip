@@ -1,6 +1,6 @@
 [package]
 name = "claim-ip"
-version = "1.0.1"
+version = "1.0.2"
 authors = ["Justin Ossevoort <github@internetionals.nl>"]
 description = "Respond to ARP replies for a some address on a network interface"
 repository = "https://github.com/internetionals/claim-ip"
@@ -10,4 +10,4 @@ license = "MIT"
 edition = "2018"
 
 [dependencies]
-nix = "0.20"
+nix = { git="https://github.com/internetionals/nix", branch="fix_sockaddr_ll_size" }
