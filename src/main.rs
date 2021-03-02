@@ -81,7 +81,7 @@ fn main() {
         log::trace!("received packet from {:?}: {:x?}", from, pkt);
 
         match arp::Arp::try_from(pkt) {
-            Ok(arp::Arp::Request(req)) => {
+            Ok(req) if req.op == arp::ArpOp::Request => {
                 log::trace!("received arp request: {:x?}", req);
                 if from.addr() != req.sha {
                     log::warn!(
@@ -96,6 +96,7 @@ fn main() {
                     if let Err(err) = sendto(
                         socket,
                         req.reply(mac)
+                            .expect("ARP reply")
                             .fill(&mut wbuf)
                             .expect("failed to construct reply packet"),
                         &SockAddr::Link(from),

@@ -2,110 +2,79 @@ use crate::types::Eui48Addr;
 use std::convert::{TryFrom, TryInto};
 use std::net::Ipv4Addr;
 
+#[derive(Debug,Clone,Copy,Eq,PartialEq)]
+pub enum ArpOp {
+    Request,
+    Reply,
+}
+
 #[derive(Debug, PartialEq, Eq)]
-pub struct ArpRequest {
+pub struct Arp {
+    pub op: ArpOp,
     pub sha: Eui48Addr,
     pub spa: Ipv4Addr,
     pub tha: Eui48Addr,
     pub tpa: Ipv4Addr,
 }
 
-impl ArpRequest {
-    pub fn new(sha: Eui48Addr, spa: Ipv4Addr, tha: Eui48Addr, tpa: Ipv4Addr) -> Self {
-        Self { tha, tpa, sha, spa }
-    }
-
-    pub fn reply<'a>(&'a self, ha: Eui48Addr) -> ArpReply {
-        ArpReply {
+impl Arp {
+    pub fn reply<'a>(&'a self, ha: Eui48Addr) -> Result<Self, ()> {
+        if self.op != ArpOp::Request {
+            return Err(());
+        }
+        Ok(Self {
+            op: ArpOp::Reply,
             sha: ha,
             spa: self.tpa,
             tha: self.sha,
             tpa: self.spa,
-        }
+        })
     }
 
-    pub fn fill<'a, 'b>(&'a self, buf: &'b mut [u8]) -> Option<&'b [u8]> {
+    pub fn fill<'a, 'b>(&'a self, buf: &'b mut [u8]) -> Result<&'b [u8], ()> {
         if buf.len() < 28 {
-            return None;
+            return Err(());
         }
-        buf[0..=7].copy_from_slice(&[0x08, 0x06, 0x08, 0x00, 0x06, 0x04, 0x00, 0x01]);
-        buf[8..=13].copy_from_slice(&self.tha);
-        buf[14..=17].copy_from_slice(&self.tpa.octets());
-        buf[18..=23].copy_from_slice(&self.sha);
+        buf[0..=6].copy_from_slice(&[0x00, 0x01, 0x08, 0x00, 0x06, 0x04, 0x00 ]);
+        buf[7] = match self.op {
+            ArpOp::Request => 1,
+            ArpOp::Reply => 2,
+        };
+        buf[8..=13].copy_from_slice(&self.sha);
+        buf[14..=17].copy_from_slice(&self.spa.octets());
+        buf[18..=23].copy_from_slice(&self.tha);
         buf[24..=27].copy_from_slice(&self.tpa.octets());
-        Some(&buf[0..=27])
+        Ok(&buf[0..=27])
     }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct ArpReply {
-    pub sha: Eui48Addr,
-    pub spa: Ipv4Addr,
-    pub tha: Eui48Addr,
-    pub tpa: Ipv4Addr,
-}
-
-impl ArpReply {
-    pub fn new(sha: Eui48Addr, spa: Ipv4Addr, tha: Eui48Addr, tpa: Ipv4Addr) -> Self {
-        Self { tha, tpa, sha, spa }
-    }
-
-    pub fn fill<'a, 'b>(&'a self, buf: &'b mut [u8]) -> Option<&'b [u8]> {
-        if buf.len() < 28 {
-            return None;
-        }
-        buf[0..=7].copy_from_slice(&[0x08, 0x06, 0x08, 0x00, 0x06, 0x04, 0x00, 0x02]);
-        buf[8..=13].copy_from_slice(&self.tha);
-        buf[14..=17].copy_from_slice(&self.tpa.octets());
-        buf[18..=23].copy_from_slice(&self.sha);
-        buf[24..=27].copy_from_slice(&self.tpa.octets());
-        Some(&buf[0..=27])
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum Arp {
-    Request(ArpRequest),
-    Reply(ArpReply),
 }
 
 impl TryFrom<&'_ [u8]> for Arp {
     type Error = ();
 
-    fn try_from(pkt: &'_ [u8]) -> Result<Arp, Self::Error> {
+    fn try_from(pkt: &'_ [u8]) -> Result<Self, Self::Error> {
         if pkt.len() < 28 {
-            return Err(());
+            Err(())?;
         }
         if !pkt.starts_with(&[0x00, 0x01, 0x08, 0x00, 0x06, 0x04, 0x00]) {
-            return Err(());
+            Err(())?;
         }
-        match pkt[7] {
-            1 => Ok(Arp::Request(ArpRequest {
-                sha: pkt[8..=13].try_into().unwrap(),
-                spa: {
-                    let bytes: [u8; 4] = pkt[14..=17].try_into().unwrap();
-                    bytes.into()
-                },
-                tha: pkt[18..=23].try_into().unwrap(),
-                tpa: {
-                    let bytes: [u8; 4] = pkt[24..=27].try_into().unwrap();
-                    bytes.into()
-                },
-            })),
-            2 => Ok(Arp::Reply(ArpReply {
-                sha: pkt[8..=13].try_into().unwrap(),
-                spa: {
-                    let bytes: [u8; 4] = pkt[14..=17].try_into().unwrap();
-                    bytes.into()
-                },
-                tha: pkt[18..=23].try_into().unwrap(),
-                tpa: {
-                    let bytes: [u8; 4] = pkt[24..=27].try_into().unwrap();
-                    bytes.into()
-                },
-            })),
-            _ => Err(()),
-        }
+        Ok(Self {
+            op: match pkt[7] {
+                1 => ArpOp::Request,
+                2 => ArpOp::Reply,
+                _ => Err(())?,
+            },
+            sha: pkt[8..=13].try_into().map_err(|_| ())?,
+            spa: {
+                let bytes: [u8; 4] = pkt[14..=17].try_into().map_err(|_| ())?;
+                bytes.into()
+            },
+            tha: pkt[18..=23].try_into().map_err(|_| ())?,
+            tpa: {
+                let bytes: [u8; 4] = pkt[24..=27].try_into().map_err(|_| ())?;
+                bytes.into()
+            },
+        })
     }
 }
 
@@ -116,36 +85,44 @@ mod tests {
 
     #[test]
     fn t1() {
-        let pkt: [u8; 28] = [
+        let request_pkt: [u8; 28] = [
             0x00, 0x01, 0x08, 0x00, 6, 4, 0, 1, // arp header
             0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 10, 0, 0, 1, // sender
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 10, 0, 0, 2, // target
         ];
-        let arp: Arp = pkt.as_ref().try_into().unwrap();
+        let request: Arp = request_pkt.as_ref().try_into().unwrap();
         assert_eq!(
-            arp,
-            Arp::Request(ArpRequest {
+            request,
+            Arp {
+                op: ArpOp::Request,
                 sha: [0x11, 0x22, 0x33, 0x44, 0x55, 0x66],
                 spa: "10.0.0.1".parse().unwrap(),
                 tha: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
                 tpa: "10.0.0.2".parse().unwrap(),
-            })
+            }
         );
 
+        let mut buf = [0u8; 128];
+        assert_eq!(request.fill(&mut buf[..]), Ok(&request_pkt[..]));
+
         let mac = [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff];
-        let reply = match arp {
-            Arp::Request(r) => r,
-            _ => panic!(),
-        };
-        let reply = reply.reply(mac);
+        let reply = request.reply(mac).expect("ARP reply");
         assert_eq!(
             reply,
-            ArpReply {
+            Arp {
+                op: ArpOp::Reply,
                 sha: [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff],
                 spa: "10.0.0.2".parse().unwrap(),
                 tha: [0x11, 0x22, 0x33, 0x44, 0x55, 0x66],
                 tpa: "10.0.0.1".parse().unwrap(),
             }
         );
+
+        let reply_pkt: [u8; 28] = [
+            0x00, 0x01, 0x08, 0x00, 6, 4, 0, 2, // arp header
+            0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 10, 0, 0, 2, // sender
+            0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 10, 0, 0, 1, // target
+        ];
+        assert_eq!(reply.fill(&mut buf[..]), Ok(&reply_pkt[..]));
     }
 }

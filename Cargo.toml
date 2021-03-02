@@ -1,6 +1,6 @@
 [package]
 name = "claim-ip"
-version = "1.0.3"
+version = "1.0.4"
 authors = ["Justin Ossevoort <github@internetionals.nl>"]
 description = "Respond to ARP replies for a some address on a network interface"
 repository = "https://github.com/internetionals/claim-ip"
