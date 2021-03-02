@@ -73,7 +73,7 @@ impl TryFrom<&'_ [u8]> for Arp {
     type Error = ();
 
     fn try_from(pkt: &'_ [u8]) -> Result<Arp, Self::Error> {
-        if pkt.len() != 28 {
+        if pkt.len() < 28 {
             return Err(());
         }
         if !pkt.starts_with(&[0x00, 0x01, 0x08, 0x00, 0x06, 0x04, 0x00]) {
