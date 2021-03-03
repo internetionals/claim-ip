@@ -2,7 +2,7 @@ use eui48::MacAddress;
 use std::convert::{TryFrom, TryInto};
 use std::net::Ipv4Addr;
 
-#[derive(Debug,Clone,Copy,Eq,PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ArpOp {
     Request,
     Reply,
@@ -35,7 +35,7 @@ impl Arp {
         if buf.len() < 28 {
             return Err(());
         }
-        buf[0..=6].copy_from_slice(&[0x00, 0x01, 0x08, 0x00, 0x06, 0x04, 0x00 ]);
+        buf[0..=6].copy_from_slice(&[0x00, 0x01, 0x08, 0x00, 0x06, 0x04, 0x00]);
         buf[7] = match self.op {
             ArpOp::Request => 1,
             ArpOp::Reply => 2,

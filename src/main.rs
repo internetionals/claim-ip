@@ -19,14 +19,21 @@ fn lookup_link_addr(iface: &str) -> Result<LinkAddr, Box<dyn std::error::Error>>
     Err("interface not found")?
 }
 
+extern "C" fn signal_termination_handler(signo: nix::libc::c_int) {
+    log::info!("Terminating due to signal {}", signo);
+    std::process::exit(0);
+}
+
 #[derive(StructOpt)]
 #[structopt(about)]
 struct Opt {
-    #[structopt(help="Network interface on which to claim the IP")]
+    #[structopt(help = "Network interface on which to claim the IP")]
     iface: String,
-    #[structopt(help="IP address to claim")]
+    #[structopt(help = "IP address to claim")]
     ip: std::net::Ipv4Addr,
-    #[structopt(help="MAC address to use when claiming the IP address (defaults to the MAC address of the interface)")]
+    #[structopt(
+        help = "MAC address to use when claiming the IP address (defaults to the MAC address of the interface)"
+    )]
     mac: Option<MacAddress>,
 }
 
@@ -34,13 +41,35 @@ fn main() {
     env_logger::init();
     let opt = Opt::from_args();
 
+    {
+        // Explicitly set terminate on signals in case we're running as PID 1 in a container
+        use nix::sys::signal::{signal, SigHandler, Signal};
+        for signo in [
+            Signal::SIGHUP,
+            Signal::SIGINT,
+            Signal::SIGTERM,
+            Signal::SIGQUIT,
+        ]
+        .iter()
+        {
+            if let Err(err) =
+                unsafe { signal(*signo, SigHandler::Handler(signal_termination_handler)) }
+            {
+                log::error!("Failed to set signal handler for {}: {}", signo, err);
+            }
+        }
+    }
+
     // Lookup interface and it's corresponding MAC-address
     let ifaddr = lookup_link_addr(&opt.iface).expect("failed to lookup link address");
     let ifindex = ifaddr.ifindex();
     let mac = opt.mac.unwrap_or(MacAddress::new(ifaddr.addr()));
     log::info!(
         "Claiming IP {} on {}[{}] for {}",
-        opt.ip, opt.iface, ifindex, mac
+        opt.ip,
+        opt.iface,
+        ifindex,
+        mac
     );
 
     // Open a raw socket for sending and receiving ARP packets
