@@ -1,4 +1,4 @@
-use crate::types::Eui48Addr;
+use eui48::MacAddress;
 use std::convert::{TryFrom, TryInto};
 use std::net::Ipv4Addr;
 
@@ -11,14 +11,14 @@ pub enum ArpOp {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Arp {
     pub op: ArpOp,
-    pub sha: Eui48Addr,
+    pub sha: MacAddress,
     pub spa: Ipv4Addr,
-    pub tha: Eui48Addr,
+    pub tha: MacAddress,
     pub tpa: Ipv4Addr,
 }
 
 impl Arp {
-    pub fn reply<'a>(&'a self, ha: Eui48Addr) -> Result<Self, ()> {
+    pub fn reply<'a>(&'a self, ha: MacAddress) -> Result<Self, ()> {
         if self.op != ArpOp::Request {
             return Err(());
         }
@@ -40,9 +40,9 @@ impl Arp {
             ArpOp::Request => 1,
             ArpOp::Reply => 2,
         };
-        buf[8..=13].copy_from_slice(&self.sha);
+        buf[8..=13].copy_from_slice(&self.sha.as_bytes());
         buf[14..=17].copy_from_slice(&self.spa.octets());
-        buf[18..=23].copy_from_slice(&self.tha);
+        buf[18..=23].copy_from_slice(&self.tha.as_bytes());
         buf[24..=27].copy_from_slice(&self.tpa.octets());
         Ok(&buf[0..=27])
     }
@@ -64,12 +64,12 @@ impl TryFrom<&'_ [u8]> for Arp {
                 2 => ArpOp::Reply,
                 _ => Err(())?,
             },
-            sha: pkt[8..=13].try_into().map_err(|_| ())?,
+            sha: MacAddress::from_bytes(&pkt[8..=13]).map_err(|_| ())?,
             spa: {
                 let bytes: [u8; 4] = pkt[14..=17].try_into().map_err(|_| ())?;
                 bytes.into()
             },
-            tha: pkt[18..=23].try_into().map_err(|_| ())?,
+            tha: MacAddress::from_bytes(&pkt[18..=23]).map_err(|_| ())?,
             tpa: {
                 let bytes: [u8; 4] = pkt[24..=27].try_into().map_err(|_| ())?;
                 bytes.into()
@@ -95,9 +95,9 @@ mod tests {
             request,
             Arp {
                 op: ArpOp::Request,
-                sha: [0x11, 0x22, 0x33, 0x44, 0x55, 0x66],
+                sha: MacAddress::new([0x11, 0x22, 0x33, 0x44, 0x55, 0x66]),
                 spa: "10.0.0.1".parse().unwrap(),
-                tha: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+                tha: MacAddress::new([0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
                 tpa: "10.0.0.2".parse().unwrap(),
             }
         );
@@ -105,15 +105,15 @@ mod tests {
         let mut buf = [0u8; 128];
         assert_eq!(request.fill(&mut buf[..]), Ok(&request_pkt[..]));
 
-        let mac = [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff];
+        let mac = MacAddress::new([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]);
         let reply = request.reply(mac).expect("ARP reply");
         assert_eq!(
             reply,
             Arp {
                 op: ArpOp::Reply,
-                sha: [0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff],
+                sha: MacAddress::new([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]),
                 spa: "10.0.0.2".parse().unwrap(),
-                tha: [0x11, 0x22, 0x33, 0x44, 0x55, 0x66],
+                tha: MacAddress::new([0x11, 0x22, 0x33, 0x44, 0x55, 0x66]),
                 tpa: "10.0.0.1".parse().unwrap(),
             }
         );
