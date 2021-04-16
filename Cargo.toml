@@ -1,6 +1,6 @@
 [package]
 name = "claim-ip"
-version = "1.0.5"
+version = "1.0.6"
 authors = ["Justin Ossevoort <github@internetionals.nl>"]
 description = "Claim an IP-address on a network by responding to ARP requests"
 repository = "https://github.com/internetionals/claim-ip"
@@ -13,5 +13,5 @@ edition = "2018"
 env_logger = "0.8"
 eui48 = "1.1.0"
 log = "0.4"
-nix = { git="https://github.com/internetionals/nix", branch="fix_sockaddr_ll_size" }
+nix = { git="https://github.com/nix-rust/nix", branch="master" }
 structopt = "0.3.21"
