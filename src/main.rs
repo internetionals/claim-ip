@@ -16,7 +16,7 @@ fn lookup_link_addr(iface: &str) -> Result<LinkAddr, Box<dyn std::error::Error>>
             }
         }
     }
-    Err("interface not found")?
+    Err("interface not found".into())
 }
 
 extern "C" fn signal_termination_handler(signo: nix::libc::c_int) {
@@ -63,7 +63,7 @@ fn main() {
     // Lookup interface and it's corresponding MAC-address
     let ifaddr = lookup_link_addr(&opt.iface).expect("failed to lookup link address");
     let ifindex = ifaddr.ifindex();
-    let mac = opt.mac.unwrap_or(MacAddress::new(ifaddr.addr()));
+    let mac = opt.mac.unwrap_or_else(|| MacAddress::new(ifaddr.addr()));
     log::info!(
         "Claiming IP {} on {}[{}] for {}",
         opt.ip,
@@ -81,7 +81,7 @@ fn main() {
     )
     .expect("failed to create packet socket");
     {
-        let mut bind_addr = ifaddr.clone();
+        let mut bind_addr = ifaddr;
         bind_addr.0.sll_protocol = (nix::libc::ETH_P_ARP as u16).to_be();
         nix::sys::socket::bind(socket, &SockAddr::Link(bind_addr))
             .expect("failed to bind to interface for arp data");
@@ -125,7 +125,7 @@ fn main() {
 
                 // Reply to ARP requests for the specified IP address
                 if req.tpa == opt.ip {
-                    log::trace!("sending arp reply");
+                    log::debug!("sending arp reply");
                     if let Err(err) = sendto(
                         socket,
                         req.reply(mac)
