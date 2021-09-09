@@ -27,6 +27,8 @@ extern "C" fn signal_termination_handler(signo: nix::libc::c_int) {
 #[derive(StructOpt)]
 #[structopt(about)]
 struct Opt {
+    #[structopt(help = "Send ARP announcement (gratuitous ARP) on start", short, long)]
+    announce: bool,
     #[structopt(help = "Network interface on which to claim the IP")]
     iface: String,
     #[structopt(help = "IP address to claim")]
@@ -90,6 +92,28 @@ fn main() {
     // Main loop
     let mut rbuf = [0u8; 500];
     let mut wbuf = [0u8; 500];
+    if opt.announce {
+        let bcast_mac = MacAddress::new([0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
+        let mut bcast_lladdr = ifaddr;
+        bcast_lladdr.0.sll_addr = [0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00];
+        let garp = arp::Arp {
+            op: arp::ArpOp::Reply,
+            sha: mac,
+            spa: opt.ip,
+            tha: bcast_mac,
+            tpa: opt.ip,
+        };
+        log::debug!("sending gratuitous arp");
+        if let Err(err) = sendto(
+            socket,
+            garp.fill(&mut wbuf)
+                .expect("failed to construct reply packet"),
+            &SockAddr::Link(bcast_lladdr),
+            MsgFlags::MSG_DONTWAIT,
+        ) {
+            log::error!("failed to send gratuitous arp: {}", err);
+        }
+    }
     loop {
         // Receive an ARP packet
         let (size, from) = match recvfrom(socket, &mut rbuf) {
