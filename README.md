@@ -12,6 +12,10 @@ The command should be invoked with 2 parameters:
 claim-ip <iface> <ipv4-addr>
 ```
 
+### Additional options
+
+- `-a`|`--announce`: Send ARP announce (gratuitous ARP) on start
+
 ### Example invocation
 
 In order to claim IP address `10.11.12.13` on interface `eth0`:
